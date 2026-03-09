@@ -415,9 +415,18 @@ provider "xenorchestra" {
                     if recovery_res.get('exit_code') == 0:
                         log_step(f"Recovery Destroy succeeded for {cleanup_workspace}.")
                     else:
-                        log_error(f"Recovery Destroy also failed for {cleanup_workspace}: {recovery_res.get('stderr', '')}")
+                        error_msg = f"Recovery Destroy also failed for {cleanup_workspace}: {recovery_res.get('stderr', '')}"
+                        log_error(error_msg)
+                        print(f"\n{RED}{BOLD}⚠ CRITICAL: Recovery Destroy Failed!{RESET}")
+                        print(f"{RED}Workspace: {cleanup_workspace}{RESET}")
+                        print(f"{RED}This may leave orphaned VMs on the platform.{RESET}")
+                        print(f"{RED}Manual cleanup may be required.{RESET}")
+                        print(f"{YELLOW}Check XenOrchestra for orphaned resources.{RESET}\n")
                 except Exception as e:
                     log_error(f"Failed to execute Recovery Destroy: {e}")
+                    print(f"\n{RED}{BOLD}⚠ CRITICAL: Exception during Recovery Destroy!{RESET}")
+                    print(f"{RED}Error: {e}{RESET}")
+                    print(f"{RED}Manual cleanup may be required.{RESET}\n")
 
         if args.chain:
             # Chained mode: each task runs in its own workspace directory.
@@ -655,18 +664,89 @@ provider "xenorchestra" {
         )
         return
 
+    # Check available disk space for long runs
+    if num_passes >= 10:
+        import shutil
+        try:
+            stat = shutil.disk_usage(args.output_dir)
+            free_gb = stat.free / (1024**3)
+            # Estimate: ~100MB per task × 10 tasks × num_passes
+            estimated_gb_needed = (0.1 * 10 * num_passes)
+
+            print(f"\n{BOLD}Disk Space Check:{RESET}")
+            print(f"  Available: {free_gb:.1f} GB")
+            print(f"  Estimated needed: {estimated_gb_needed:.1f} GB")
+
+            if free_gb < estimated_gb_needed:
+                print(f"{RED}⚠ WARNING: Low disk space! Available ({free_gb:.1f} GB) may be insufficient.{RESET}")
+                print(f"{YELLOW}Consider cleaning up old results or using fewer samples.{RESET}")
+            elif free_gb < estimated_gb_needed * 2:
+                print(f"{YELLOW}⚠ Disk space is tight. Monitor usage during evaluation.{RESET}")
+            else:
+                print(f"{GREEN}✓ Sufficient disk space available{RESET}")
+        except Exception as e:
+            log_step(f"Could not check disk space: {e}")
+
     try:
         with open(lockfile_path, "w", encoding="utf-8") as lock_file:
             lock_file.write(f"model={model_name}\n")
 
         print(f"\n{BOLD}{CYAN}>>> Running {num_passes} sample(s) sequentially...{RESET}")
+
+        # Estimate total runtime for user awareness
+        if num_passes > 1:
+            estimated_minutes_per_sample = 10  # Conservative estimate per task
+            total_tasks = len(tasks)
+            estimated_total_minutes = num_passes * total_tasks * estimated_minutes_per_sample
+            print(f"{CYAN}Estimated total runtime: ~{estimated_total_minutes} minutes ({estimated_total_minutes/60:.1f} hours){RESET}")
+            print(f"{CYAN}Processing {num_passes} samples × {total_tasks} tasks = {num_passes * total_tasks} evaluations{RESET}")
+            if num_passes >= 50:
+                print(f"{YELLOW}⚠ Long-running evaluation detected. Consider using --pass to split into smaller batches.{RESET}")
+
+        import time
+        overall_start_time = time.time()
+
         for p in range(pass_start, pass_start + num_passes):
-            log_step(f"Starting sample {p - pass_start + 1}/{num_passes}")
+            sample_start_time = time.time()
+            current_sample = p - pass_start + 1
+            log_step(f"Starting sample {current_sample}/{num_passes}")
+            print(f"{BOLD}{CYAN}{'='*80}{RESET}")
+            print(f"{BOLD}{CYAN}  SAMPLE {current_sample}/{num_passes} (Pass Index: {p}){RESET}")
+            print(f"{BOLD}{CYAN}{'='*80}{RESET}")
+
             await run_sample(p)
+
+            sample_elapsed = time.time() - sample_start_time
+            overall_elapsed = time.time() - overall_start_time
+            samples_completed = current_sample
+            samples_remaining = num_passes - samples_completed
+
+            if samples_completed > 0:
+                avg_time_per_sample = overall_elapsed / samples_completed
+                eta_seconds = avg_time_per_sample * samples_remaining
+                eta_minutes = eta_seconds / 60
+
+                print(f"\n{GREEN}✓ Sample {current_sample}/{num_passes} completed in {sample_elapsed/60:.1f} minutes{RESET}")
+                print(f"{CYAN}Progress: {current_sample}/{num_passes} ({100*current_sample/num_passes:.1f}%){RESET}")
+                if samples_remaining > 0:
+                    print(f"{CYAN}Estimated time remaining: ~{eta_minutes:.1f} minutes ({eta_minutes/60:.1f} hours){RESET}")
+                print(f"{CYAN}Average time per sample: {avg_time_per_sample/60:.1f} minutes{RESET}")
+            print()
     finally:
         unload_ollama_model(model_config)
         if os.path.exists(lockfile_path):
             os.remove(lockfile_path)
+
+    # Print final summary for multi-sample runs
+    if num_passes > 1:
+        total_elapsed = time.time() - overall_start_time
+        print(f"\n{BOLD}{GREEN}{'='*80}{RESET}")
+        print(f"{BOLD}{GREEN}  EVALUATION COMPLETE{RESET}")
+        print(f"{BOLD}{GREEN}{'='*80}{RESET}")
+        print(f"{GREEN}Total samples completed: {num_passes}{RESET}")
+        print(f"{GREEN}Total time elapsed: {total_elapsed/60:.1f} minutes ({total_elapsed/3600:.2f} hours){RESET}")
+        print(f"{GREEN}Average time per sample: {total_elapsed/num_passes/60:.1f} minutes{RESET}")
+        print(f"{BOLD}{GREEN}{'='*80}{RESET}\n")
 
     print(f"\n{BOLD}{GREEN}Evaluation Complete. All files saved to: {os.path.abspath(args.output_dir)}{RESET}")
 
