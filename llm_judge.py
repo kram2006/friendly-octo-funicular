@@ -191,7 +191,11 @@ def main():
         if not terraform_code:
             terraform_code = entry.get('llm_response', {}).get('generated_code', '')
         spec_passed   = entry.get('spec_accuracy', {}).get('passed', None)
-        apply_success = entry.get('final_outcome', {}).get('execution_successful', False)
+        # BUG-H7 FIX: Use apply_success field with fallback to execution_successful
+        apply_success = entry.get('final_outcome', {}).get('apply_success')
+        if apply_success is None:
+            # Fallback for plan-only mode
+            apply_success = entry.get('final_outcome', {}).get('execution_successful', False)
 
         # Skip if already judged (and --skip-existing flag is set)
         if args.skip_existing and 'judge_verdict' in entry:

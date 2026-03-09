@@ -19,6 +19,10 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+# BUG-H10 FIX: Add missing Python bytecode patterns
+*.pyc
+*.pyo
+*.pyd
 
 # Virtual Environments
 venv/
@@ -40,11 +44,15 @@ env/
 .terraform.lock.hcl
 tfplan
 crash.log
+# BUG-H10 FIX: Add terraform backup files
+*.tfstate.backup
 
 # Results and Logs
 results/
 *.log
 screenshots/
+# BUG-H10 FIX: Add evaluation lockfile
+.evaluation_in_progress
 
 # OS
 .DS_Store

@@ -316,14 +316,19 @@ async def main():
 
         tasks = [all_tasks_by_id[tid] for tid in chain_ids]
     elif not args.task_id:
-        # Fixed benchmark mode: tasks ordered for chain-dependency correctness; independent
-        # tasks and chain groups run concurrently within each sample.
+        # BUG-H9 FIX: Updated comment - tasks run sequentially, not concurrently
+        # Fixed benchmark mode: tasks and chain groups run sequentially in dependency order.
+        # Each task/group completes (including VM cleanup) before the next begins.
         tasks = _order_fixed_benchmark_tasks(dataset_tasks)
 
     # Pass@k Loop
     num_passes = args.samples
     pass_start = 0
     if args.pass_num is not None:
+        # BUG-H8 FIX: Validate pass number >= 1
+        if args.pass_num < 1:
+            print(f"{RED}Error: --pass must be >= 1{RESET}")
+            return
         num_passes = 1
         pass_start = args.pass_num - 1
     
