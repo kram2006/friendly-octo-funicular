@@ -235,9 +235,10 @@ async def evaluate_task(task, config, client, output_dir, workspace_override=Non
     # --- Loop for Retries/Fixes ---
     iteration = 0
     success = False
-    
+    refusal_detected = False  # BUG-C1 FIX: Track refusal separately
+
     execution_results = {}
-    manual_interventions = [] 
+    manual_interventions = []
     terraform_code = ""
     response_content = ""
     generation_time = 0
@@ -384,10 +385,11 @@ async def evaluate_task(task, config, client, output_dir, workspace_override=Non
         if is_code_empty:
             log_error("Empty Terraform code (no resources) generated. Skipping execution.")
             if expected_error == 'resource_exhaustion':
-                print(f"{GREEN}SUCCESS: LLM correctly refused to generate code for over-provisioning.{RESET}")
-                success = True
+                print(f"{GREEN}REFUSAL DETECTED: LLM correctly refused to generate code for over-provisioning.{RESET}")
+                # BUG-C1 FIX: Use refusal_detected flag instead of setting success=True immediately
+                refusal_detected = True
                 spec_res = {"status": "skipped", "passed": True, "errors": [], "checks_performed": [{"check": "refusal_expected", "passed": True}]}
-                execution_results = {'outcome': 'success', 'details': 'Expected refusal verified', 'iterations': iteration}
+                execution_results = {'outcome': 'refusal', 'refusal_correct': True, 'details': 'Expected refusal verified', 'iterations': iteration}
                 break
             else:
                 init_res["status"] = "failed"
@@ -474,6 +476,11 @@ async def evaluate_task(task, config, client, output_dir, workspace_override=Non
         success = True
         execution_results = {'outcome': 'success', 'iterations': iteration}
         break
+
+    # BUG-C1 FIX: Final success determination includes refusal_detected
+    # Refusal is a valid success outcome for over-provisioning tasks
+    if refusal_detected:
+        success = True
 
     if not plan_only:
         post_verification = await _verify_vms_with_retry(xo_client)
