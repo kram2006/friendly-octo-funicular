@@ -1,0 +1,953 @@
+task_id,category,prompt_type,prompt,resource_requirements,expected_resources,intent_spec_file,complexity_loc,complexity_resources,complexity_interconnections,complexity_level,reference_hcl
+C1.1,CREATE,vague,Create a VM,{},"[""xenorchestra_vm""]",,44,5,4,4,"terraform {
+  required_providers {
+    xenorchestra = {
+      source  = ""terra-farm/xenorchestra""
+      version = ""~> 0.26.0""
+    }
+  }
+}
+
+provider ""xenorchestra"" {
+  url      = ""ws://localhost:8080""
+  username = ""admin@admin.net""
+  password = ""admin""
+  insecure = true
+}
+
+data ""xenorchestra_pool"" ""pool"" {
+  name_label = ""DAO-Agentic-Infra""
+}
+
+data ""xenorchestra_template"" ""ubuntu"" {
+  name_label = ""Ubuntu-22""
+}
+
+data ""xenorchestra_network"" ""net"" {
+  name_label = ""Pool-wide network associated with eth0""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+data ""xenorchestra_sr"" ""local_storage"" {
+  name_label = ""Local storage""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+resource ""xenorchestra_vm"" ""vm"" {
+  name_label       = ""ubuntu-vm""
+  name_description = ""Ubuntu 22 VM created by Terraform""
+  template         = data.xenorchestra_template.ubuntu.id
+  cloud_config     = """"
+
+  cpus = 2
+
+  memory_max = 4294967296 # 4 GB in bytes
+
+  network {
+    network_id = data.xenorchestra_network.net.id
+  }
+
+  disk {
+    sr_id      = data.xenorchestra_sr.local_storage.id
+    name_label = ""ubuntu-vm-root""
+    size       = 53687091200 # 50 GB in bytes (matches template VDI size)
+  }
+
+  tags = []
+
+  wait_for_ip = false
+}"
+C1.2,CREATE,little_context,Create an Ubuntu VM with 2GB RAM,"{""memory_max_bytes"": 2147483648}","[""xenorchestra_vm""]",,48,5,4,4,"terraform {
+  required_providers {
+    xenorchestra = {
+      source  = ""terra-farm/xenorchestra""
+      version = ""~> 0.26.0""
+    }
+  }
+}
+
+provider ""xenorchestra"" {
+  url      = ""ws://localhost:8080""
+  username = ""admin@admin.net""
+  password = ""admin""
+  insecure = true
+}
+
+# -------------------------------------------------------
+# Data Sources – look up existing objects in Xen Orchestra
+# -------------------------------------------------------
+
+data ""xenorchestra_pool"" ""pool"" {
+  name_label = ""DAO-Agentic-Infra""
+}
+
+data ""xenorchestra_template"" ""ubuntu"" {
+  name_label = ""Ubuntu-22""
+}
+
+data ""xenorchestra_network"" ""net"" {
+  name_label = ""Pool-wide network associated with eth0""
+}
+
+data ""xenorchestra_sr"" ""local_storage"" {
+  name_label = ""Local storage""
+}
+
+# -------------------------------------------------------
+# Variables
+# -------------------------------------------------------
+
+variable ""vm_name"" {
+  description = ""Name of the Ubuntu VM""
+  type        = string
+  default     = ""ubuntu-vm-01""
+}
+
+variable ""vm_cpus"" {
+  description = ""Number of vCPUs for the VM""
+  type        = number
+  default     = 2
+}
+
+variable ""vm_memory_gb"" {
+  description = ""Memory in GB for the VM""
+  type        = number
+  default     = 2
+}
+
+variable ""vm_disk_size_gb"" {
+  description = ""Root disk size in GB (must be >= 50 to match the Ubuntu-22 template VDI)""
+  type        = number
+  default     = 50
+}
+
+# -------------------------------------------------------
+# Resource – Ubuntu VM
+# -------------------------------------------------------
+
+resource ""xenorchestra_vm"" ""ubuntu_vm"" {
+  name_label       = var.vm_name
+  name_description = ""Ubuntu 22 VM managed by Terraform""
+  template         = data.xenorchestra_template.ubuntu.id
+  cloud_config     = """"
+
+  cpus = var.vm_cpus
+
+  memory_max = var.vm_memory_gb * 1024 * 1024 * 1024 # Convert GB to bytes
+
+  network {
+    network_id = data.xenorchestra_network.net.id
+  }
+
+  disk {
+    sr_id      = data.xenorchestra_sr.local_storage.id
+    name_label = ""${var.vm_name}-root""
+    size       = var.vm_disk_size_gb * 1024 * 1024 * 1024 # Convert GB to bytes
+  }
+
+  tags = [
+    ""terraform-managed"",
+    ""ubuntu""
+  ]
+
+  auto_poweron = true
+  wait_for_ip  = false
+}
+
+# -------------------------------------------------------
+# Outputs
+# -------------------------------------------------------
+
+output ""vm_id"" {
+  description = ""The ID of the created VM""
+  value       = xenorchestra_vm.ubuntu_vm.id
+}
+
+output ""vm_name"" {
+  description = ""The name of the created VM""
+  value       = xenorchestra_vm.ubuntu_vm.name_label
+}"
+C1.3,CREATE,detailed,"Create Ubuntu 22.04 VM named 'app-01' with 2 vCPU, 4GB RAM, 50GB disk on storage 'Local storage', network 'Pool-wide network associated with eth0' with DHCP","{""memory_max_bytes"": 4294967296, ""cpus"": 2, ""name"": ""app-01"", ""size_bytes"": 53687091200}","[""xenorchestra_vm""]",,48,5,4,4,"terraform {
+  required_providers {
+    xenorchestra = {
+      source  = ""terra-farm/xenorchestra""
+      version = ""~> 0.26.0""
+    }
+  }
+}
+
+provider ""xenorchestra"" {
+  url      = ""ws://localhost:8080""
+  username = ""admin@admin.net""
+  password = ""admin""
+  insecure = true
+}
+
+# -------------------------------------------------------
+# Data Sources – look up existing objects in Xen Orchestra
+# -------------------------------------------------------
+
+data ""xenorchestra_pool"" ""pool"" {
+  name_label = ""DAO-Agentic-Infra""
+}
+
+data ""xenorchestra_template"" ""ubuntu"" {
+  name_label = ""Ubuntu-22""
+}
+
+data ""xenorchestra_network"" ""net"" {
+  name_label = ""Pool-wide network associated with eth0""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+data ""xenorchestra_sr"" ""local_storage"" {
+  name_label = ""Local storage""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+# -------------------------------------------------------
+# Virtual Machine – app-01
+# -------------------------------------------------------
+
+resource ""xenorchestra_vm"" ""app_01"" {
+  name_label       = ""app-01""
+  name_description = ""Ubuntu 22.04 application server provisioned by Terraform""
+  template         = data.xenorchestra_template.ubuntu.id
+
+  cpus       = 2
+  memory_max = 4294967296  # 4 GB in bytes (4 * 1024^3)
+
+  network {
+    network_id = data.xenorchestra_network.net.id
+  }
+
+  disk {
+    sr_id      = data.xenorchestra_sr.local_storage.id
+    name_label = ""app-01-root""
+    size       = 53687091200  # 50 GB in bytes (50 * 1024^3)
+  }
+
+  # Cloud-init network configuration – DHCP on the primary interface
+  cloud_network_config = <<-EOF
+    version: 1
+    config:
+      - type: physical
+        name: eth0
+        subnets:
+          - type: dhcp
+  EOF
+
+  # Ensure the VM starts after creation
+  auto_poweron = true
+  wait_for_ip  = false
+
+  tags = [
+    ""managed-by:terraform"",
+    ""environment:production""
+  ]
+}
+
+# -------------------------------------------------------
+# Outputs
+# -------------------------------------------------------
+
+output ""vm_id"" {
+  description = ""The Xen Orchestra ID of the app-01 VM""
+  value       = xenorchestra_vm.app_01.id
+}
+
+output ""vm_name"" {
+  description = ""The name of the VM""
+  value       = xenorchestra_vm.app_01.name_label
+}"
+C2.2,CREATE,little_context,Create 3 Ubuntu VMs with 2GB RAM each,"{""memory_max_bytes"": 6442450944, ""count"": 3}","[""xenorchestra_vm""]",,45,5,4,4,"terraform {
+  required_providers {
+    xenorchestra = {
+      source  = ""terra-farm/xenorchestra""
+      version = ""~> 0.26.0""
+    }
+  }
+}
+
+provider ""xenorchestra"" {
+  url      = ""ws://localhost:8080""
+  username = ""admin@admin.net""
+  password = ""admin""
+  insecure = true
+}
+
+# ---------------------
+# Data Sources
+# ---------------------
+
+data ""xenorchestra_pool"" ""pool"" {
+  name_label = ""DAO-Agentic-Infra""
+}
+
+data ""xenorchestra_template"" ""ubuntu"" {
+  name_label = ""Ubuntu-22""
+}
+
+data ""xenorchestra_network"" ""network"" {
+  name_label = ""Pool-wide network associated with eth0""
+}
+
+data ""xenorchestra_sr"" ""local_storage"" {
+  name_label = ""Local storage""
+}
+
+# ---------------------
+# Variables
+# ---------------------
+
+variable ""vm_count"" {
+  description = ""Number of Ubuntu VMs to create""
+  type        = number
+  default     = 3
+}
+
+variable ""vm_memory"" {
+  description = ""Memory per VM in bytes (2GB)""
+  type        = number
+  default     = 2147483648 # 2 * 1024^3 = 2GB
+}
+
+variable ""vm_cpus"" {
+  description = ""Number of vCPUs per VM""
+  type        = number
+  default     = 2
+}
+
+variable ""vm_disk_size"" {
+  description = ""Disk size per VM in bytes (50GB - must match or exceed template VDI size)""
+  type        = number
+  default     = 53687091200 # 50 * 1024^3 = 50GB (matches template VDI size)
+}
+
+variable ""vm_name_prefix"" {
+  description = ""Prefix for VM name labels""
+  type        = string
+  default     = ""ubuntu-vm""
+}
+
+# ---------------------
+# Cloud Config
+# ---------------------
+
+resource ""xenorchestra_cloud_config"" ""ubuntu_vm"" {
+  count = var.vm_count
+
+  name = ""${var.vm_name_prefix}-${count.index + 1}-cloud-config""
+
+  template = <<-EOF
+    #cloud-config
+    hostname: ${var.vm_name_prefix}-${count.index + 1}
+    manage_etc_hosts: true
+    users:
+      - name: ubuntu
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        shell: /bin/bash
+        lock_passwd: false
+    package_update: true
+    package_upgrade: true
+  EOF
+}
+
+# ---------------------
+# Virtual Machines
+# ---------------------
+
+resource ""xenorchestra_vm"" ""ubuntu_vm"" {
+  count = var.vm_count
+
+  name_label       = ""${var.vm_name_prefix}-${count.index + 1}""
+  name_description = ""Ubuntu 22.04 VM ${count.index + 1} managed by Terraform""
+  template         = data.xenorchestra_template.ubuntu.id
+  cloud_config     = xenorchestra_cloud_config.ubuntu_vm[count.index].template
+
+  cpus       = var.vm_cpus
+  memory_max = var.vm_memory
+
+  disk {
+    sr_id      = data.xenorchestra_sr.local_storage.id
+    name_label = ""${var.vm_name_prefix}-${count.index + 1}-disk""
+    size       = var.vm_disk_size
+  }
+
+  network {
+    network_id = data.xenorchestra_network.network.id
+  }
+
+  tags = [
+    ""terraform-managed"",
+    ""ubuntu-22""
+  ]
+
+  wait_for_ip = false
+}
+
+# ---------------------
+# Outputs
+# ---------------------
+
+output ""vm_names"" {
+  description = ""Names of the created VMs""
+  value       = xenorchestra_vm.ubuntu_vm[*].name_label
+}
+
+output ""vm_ids"" {
+  description = ""IDs of the created VMs""
+  value       = xenorchestra_vm.ubuntu_vm[*].id
+}"
+C2.3,CREATE,detailed,"Create 3 Ubuntu 22.04 VMs named 'web-01', 'web-02', 'web-03' with 2 vCPU, 4GB RAM, 50GB disk each on storage 'Local storage', network 'Pool-wide network associated with eth0' with DHCP","{""memory_max_bytes"": 12884901888, ""count"": 3, ""names"": [""web-01"", ""web-02"", ""web-03""]}","[""xenorchestra_vm""]",,52,5,5,5,"terraform {
+  required_providers {
+    xenorchestra = {
+      source  = ""terra-farm/xenorchestra""
+      version = ""~> 0.26.0""
+    }
+  }
+}
+
+provider ""xenorchestra"" {
+  url      = ""ws://localhost:8080""
+  username = ""admin@admin.net""
+  password = ""admin""
+  insecure = true
+}
+
+# ---------------------
+# Data Sources
+# ---------------------
+
+data ""xenorchestra_pool"" ""pool"" {
+  name_label = ""DAO-Agentic-Infra""
+}
+
+data ""xenorchestra_template"" ""ubuntu"" {
+  name_label = ""Ubuntu-22""
+}
+
+data ""xenorchestra_network"" ""net"" {
+  name_label = ""Pool-wide network associated with eth0""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+data ""xenorchestra_sr"" ""local_storage"" {
+  name_label = ""Local storage""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+# ---------------------
+# Variables
+# ---------------------
+
+variable ""vm_names"" {
+  description = ""List of VM names to create""
+  type        = list(string)
+  default     = [""web-01"", ""web-02"", ""web-03""]
+}
+
+variable ""vm_cpus"" {
+  description = ""Number of vCPUs per VM""
+  type        = number
+  default     = 2
+}
+
+variable ""vm_memory_max"" {
+  description = ""Maximum memory in bytes (4GB)""
+  type        = number
+  default     = 4294967296 # 4 * 1024 * 1024 * 1024
+}
+
+variable ""vm_disk_size"" {
+  description = ""Disk size in bytes (50GB)""
+  type        = number
+  default     = 53687091200 # 50 * 1024 * 1024 * 1024
+}
+
+# ---------------------
+# Cloud Config (DHCP)
+# ---------------------
+
+resource ""xenorchestra_cloud_config"" ""web"" {
+  for_each = toset(var.vm_names)
+
+  name = ""${each.value}-cloud-config""
+
+  template = <<-EOF
+#cloud-config
+hostname: ${each.value}
+manage_etc_hosts: true
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
+EOF
+}
+
+# ---------------------
+# Virtual Machines
+# ---------------------
+
+resource ""xenorchestra_vm"" ""web"" {
+  for_each = toset(var.vm_names)
+
+  name_label       = each.value
+  name_description = ""Ubuntu 22.04 web server - ${each.value}""
+  template         = data.xenorchestra_template.ubuntu.id
+  cloud_config     = xenorchestra_cloud_config.web[each.key].template
+
+  cpus       = var.vm_cpus
+  memory_max = var.vm_memory_max
+
+  disk {
+    sr_id      = data.xenorchestra_sr.local_storage.id
+    name_label = ""${each.value}-root""
+    size       = var.vm_disk_size
+  }
+
+  network {
+    network_id = data.xenorchestra_network.net.id
+  }
+
+  auto_poweron = true
+  wait_for_ip  = true
+  power_state  = ""Running""
+}
+
+# ---------------------
+# Outputs
+# ---------------------
+
+output ""vm_ids"" {
+  description = ""IDs of the created VMs""
+  value = {
+    for name, vm in xenorchestra_vm.web : name => vm.id
+  }
+}
+
+output ""vm_ip_addresses"" {
+  description = ""IP addresses of the created VMs (first detected)""
+  value = {
+    for name, vm in xenorchestra_vm.web : name => vm.ipv4_addresses
+  }
+}"
+R1.2,READ,little_context,List all VMs with their RAM allocation,{},"[""data.xenorchestra_vms""]",,23,2,3,3,"terraform {
+  required_providers {
+    xenorchestra = {
+      source  = ""terra-farm/xenorchestra""
+      version = ""~> 0.26.0""
+    }
+  }
+}
+
+provider ""xenorchestra"" {
+  url      = ""ws://localhost:8080""
+  username = ""admin@admin.net""
+  password = ""admin""
+  insecure = true
+}
+
+# Look up the pool
+data ""xenorchestra_pool"" ""pool"" {
+  name_label = ""DAO-Agentic-Infra""
+}
+
+# Look up all VMs in the pool using the xenorchestra_vms data source
+data ""xenorchestra_vms"" ""all_vms"" {
+  pool_id   = data.xenorchestra_pool.pool.id
+  power_state = ""Running""
+}
+
+# Also query halted VMs
+data ""xenorchestra_vms"" ""halted_vms"" {
+  pool_id     = data.xenorchestra_pool.pool.id
+  power_state = ""Halted""
+}
+
+# Output running VMs with RAM allocation
+output ""running_vms"" {
+  description = ""List of all running VMs with their RAM allocation""
+  value = [
+    for vm in data.xenorchestra_vms.all_vms.vms : {
+      name_label       = vm.name_label
+      id               = vm.id
+      power_state      = vm.power_state
+      memory_max_bytes = vm.memory_max
+      memory_max_gb    = format(""%.2f GB"", vm.memory_max / 1073741824)
+    }
+  ]
+}
+
+# Output halted VMs with RAM allocation
+output ""halted_vms"" {
+  description = ""List of all halted VMs with their RAM allocation""
+  value = [
+    for vm in data.xenorchestra_vms.halted_vms.vms : {
+      name_label       = vm.name_label
+      id               = vm.id
+      power_state      = vm.power_state
+      memory_max_bytes = vm.memory_max
+      memory_max_gb    = format(""%.2f GB"", vm.memory_max / 1073741824)
+    }
+  ]
+}
+
+# Summary output
+output ""vm_summary"" {
+  description = ""Summary of all VMs and total RAM allocated""
+  value = {
+    total_running_vms = length(data.xenorchestra_vms.all_vms.vms)
+    total_halted_vms  = length(data.xenorchestra_vms.halted_vms.vms)
+    total_vms         = length(data.xenorchestra_vms.all_vms.vms) + length(data.xenorchestra_vms.halted_vms.vms)
+    total_ram_allocated_gb = format(""%.2f GB"",
+      (sum([for vm in data.xenorchestra_vms.all_vms.vms : vm.memory_max]) +
+      sum([for vm in data.xenorchestra_vms.halted_vms.vms : vm.memory_max])) / 1073741824
+    )
+    available_ram_gb = ""20.00 GB""
+  }
+}
+
+# Pool information
+output ""pool_info"" {
+  description = ""Pool information""
+  value = {
+    pool_name = data.xenorchestra_pool.pool.name_label
+    pool_id   = data.xenorchestra_pool.pool.id
+  }
+}"
+U1.2,UPDATE,little_context,Increase RAM of app-01 to 6GB,"{""memory_max_bytes"": 6442450944, ""target_vm"": ""app-01"", ""op"": ""update""}","[""xenorchestra_vm""]",,44,5,4,4,"terraform {
+  required_providers {
+    xenorchestra = {
+      source  = ""terra-farm/xenorchestra""
+      version = ""~> 0.26.0""
+    }
+  }
+}
+
+provider ""xenorchestra"" {
+  url      = ""ws://localhost:8080""
+  username = ""admin@admin.net""
+  password = ""admin""
+  insecure = true
+}
+
+# Data Sources
+
+data ""xenorchestra_pool"" ""pool"" {
+  name_label = ""DAO-Agentic-Infra""
+}
+
+data ""xenorchestra_template"" ""ubuntu22"" {
+  name_label = ""Ubuntu-22""
+}
+
+data ""xenorchestra_network"" ""network"" {
+  name_label = ""Pool-wide network associated with eth0""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+data ""xenorchestra_sr"" ""local_storage"" {
+  name_label = ""Local storage""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+# Virtual Machines
+
+resource ""xenorchestra_vm"" ""app_01"" {
+  name_label       = ""app-01""
+  name_description = ""Ubuntu 22.04 application server provisioned by Terraform""
+  template         = data.xenorchestra_template.ubuntu22.id
+  cpus             = 2
+  memory_max       = 6442450944 # 6GB (increased from 4GB)
+
+  network {
+    network_id = data.xenorchestra_network.network.id
+  }
+
+  disk {
+    name_label = ""app-01-root""
+    size       = 53687091200 # 50GB
+    sr_id      = data.xenorchestra_sr.local_storage.id
+  }
+
+  tags = [
+    ""environment:production"",
+    ""managed-by:terraform""
+  ]
+
+  wait_for_ip = false
+}"
+D1.2,DELETE,little_context,Remove app-01 from my infrastructure,"{""target_vm"": ""app-01"", ""op"": ""delete""}",[],,17,1,2,2,"terraform {
+  required_providers {
+    xenorchestra = {
+      source  = ""terra-farm/xenorchestra""
+      version = ""~> 0.26.0""
+    }
+  }
+}
+
+provider ""xenorchestra"" {
+  url      = ""ws://localhost:8080""
+  username = ""admin@admin.net""
+  password = ""admin""
+  insecure = true
+}
+
+# Retain data sources for future use
+
+data ""xenorchestra_pool"" ""pool"" {
+  name_label = ""DAO-Agentic-Infra""
+}
+
+data ""xenorchestra_template"" ""ubuntu"" {
+  name_label = ""Ubuntu-22""
+}
+
+data ""xenorchestra_network"" ""network"" {
+  name_label = ""Pool-wide network associated with eth0""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+data ""xenorchestra_sr"" ""local_storage"" {
+  name_label = ""Local storage""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+# The xenorchestra_vm ""app-01"" resource has been removed.
+# Running `terraform apply` will destroy the app-01 VM."
+D2.2,DELETE,little_context,Remove web-02 and web-03 from my infrastructure,"{""target_vm"": [""web-02"", ""web-03""], ""op"": ""delete""}",[],,44,5,4,4,"terraform {
+  required_providers {
+    xenorchestra = {
+      source  = ""terra-farm/xenorchestra""
+      version = ""~> 0.26.0""
+    }
+  }
+}
+
+provider ""xenorchestra"" {
+  url      = ""ws://localhost:8080""
+  username = ""admin@admin.net""
+  password = ""admin""
+  insecure = true
+}
+
+# -----------------------------
+# Data Sources
+# -----------------------------
+
+data ""xenorchestra_pool"" ""pool"" {
+  name_label = ""DAO-Agentic-Infra""
+}
+
+data ""xenorchestra_template"" ""ubuntu22"" {
+  name_label = ""Ubuntu-22""
+}
+
+data ""xenorchestra_network"" ""net"" {
+  name_label = ""Pool-wide network associated with eth0""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+data ""xenorchestra_sr"" ""local_storage"" {
+  name_label = ""Local storage""
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+# -----------------------------
+# Import existing web-01 so Terraform adopts it
+# -----------------------------
+
+import {
+  to = xenorchestra_vm.web_01
+  id = ""4b9eb2a7-b0c4-b660-c816-c8a5c034d4b0""
+}
+
+# -----------------------------
+# Virtual Machines
+# -----------------------------
+
+# web-01 — retained (imported from existing state)
+resource ""xenorchestra_vm"" ""web_01"" {
+  name_label       = ""web-01""
+  name_description = ""Ubuntu 22.04 web server - web-01""
+  template         = data.xenorchestra_template.ubuntu22.id
+  cpus             = 2
+  memory_max       = 4294967296 # 4 GB
+  wait_for_ip      = true
+
+  disk {
+    name_label = ""web-01-root""
+    size       = 53687091200 # 50 GB
+    sr_id      = data.xenorchestra_sr.local_storage.id
+  }
+
+  network {
+    network_id = data.xenorchestra_network.net.id
+  }
+}
+
+# web-02 — REMOVED
+# web-03 — REMOVED"
+C5.2,CREATE,over_provisioning,Create 10 Ubuntu VMs with 3GB RAM each,"{""memory_max_bytes"": 32212254720, ""count"": 10, ""expected_error"": ""resource_exhaustion""}","[""xenorchestra_vm""]",,45,5,4,4,"terraform {
+  required_providers {
+    xenorchestra = {
+      source  = ""terra-farm/xenorchestra""
+      version = ""~> 0.26.0""
+    }
+  }
+}
+
+provider ""xenorchestra"" {
+  url      = ""ws://localhost:8080""
+  username = ""admin@admin.net""
+  password = ""admin""
+  insecure = true
+}
+
+# ---------------------
+# Data Sources
+# ---------------------
+
+data ""xenorchestra_pool"" ""pool"" {
+  name_label = ""DAO-Agentic-Infra""
+}
+
+data ""xenorchestra_template"" ""ubuntu"" {
+  name_label = ""Ubuntu-22""
+}
+
+data ""xenorchestra_network"" ""network"" {
+  name_label = ""Pool-wide network associated with eth0""
+}
+
+data ""xenorchestra_sr"" ""local_storage"" {
+  name_label = ""Local storage""
+}
+
+# ---------------------
+# Variables
+# ---------------------
+
+variable ""vm_count"" {
+  description = ""Number of Ubuntu VMs to create""
+  type        = number
+  default     = 10
+}
+
+variable ""vm_memory"" {
+  description = ""Memory per VM in bytes (3GB)""
+  type        = number
+  default     = 3221225472 # 3 * 1024^3
+}
+
+variable ""vm_cpus"" {
+  description = ""Number of vCPUs per VM""
+  type        = number
+  default     = 3
+}
+
+variable ""vm_disk_size"" {
+  description = ""Disk size per VM in bytes (50GB - matches template VDI size)""
+  type        = number
+  default     = 53687091200 # 50 * 1024^3
+}
+
+variable ""vm_name_prefix"" {
+  description = ""Prefix for VM names""
+  type        = string
+  default     = ""ubuntu-vm""
+}
+
+# ---------------------
+# Cloud Config
+# ---------------------
+
+resource ""xenorchestra_cloud_config"" ""ubuntu_config"" {
+  count = var.vm_count
+
+  name = ""${var.vm_name_prefix}-${format(""%02d"", count.index + 1)}-cloud-config""
+
+  template = <<-EOF
+    #cloud-config
+    hostname: ${var.vm_name_prefix}-${format(""%02d"", count.index + 1)}
+    manage_etc_hosts: true
+    users:
+      - name: ubuntu
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        shell: /bin/bash
+        lock_passwd: false
+    package_update: true
+    packages:
+      - qemu-guest-agent
+    runcmd:
+      - systemctl enable qemu-guest-agent
+      - systemctl start qemu-guest-agent
+  EOF
+}
+
+# ---------------------
+# Virtual Machines
+# ---------------------
+
+resource ""xenorchestra_vm"" ""ubuntu_vm"" {
+  count = var.vm_count
+
+  name_label       = ""${var.vm_name_prefix}-${format(""%02d"", count.index + 1)}""
+  name_description = ""Ubuntu 22.04 VM ${count.index + 1} of ${var.vm_count}""
+  template         = data.xenorchestra_template.ubuntu.id
+  cloud_config     = xenorchestra_cloud_config.ubuntu_config[count.index].template
+
+  cpus       = var.vm_cpus
+  memory_max = var.vm_memory
+
+  disk {
+    sr_id      = data.xenorchestra_sr.local_storage.id
+    name_label = ""${var.vm_name_prefix}-${format(""%02d"", count.index + 1)}-disk""
+    size       = var.vm_disk_size
+  }
+
+  network {
+    network_id = data.xenorchestra_network.network.id
+  }
+
+  tags = [
+    ""ubuntu"",
+    ""managed-by-terraform""
+  ]
+
+  wait_for_ip = false
+}
+
+# ---------------------
+# Outputs
+# ---------------------
+
+output ""vm_names"" {
+  description = ""Names of all created VMs""
+  value       = xenorchestra_vm.ubuntu_vm[*].name_label
+}
+
+output ""vm_ids"" {
+  description = ""IDs of all created VMs""
+  value       = xenorchestra_vm.ubuntu_vm[*].id
+}
+
+output ""vm_summary"" {
+  description = ""Summary of VM resource allocation""
+  value = {
+    total_vms      = var.vm_count
+    ram_per_vm_gb  = var.vm_memory / pow(1024, 3)
+    total_ram_gb   = (var.vm_count * var.vm_memory) / pow(1024, 3)
+    cpus_per_vm    = var.vm_cpus
+    total_cpus     = var.vm_count * var.vm_cpus
+    disk_per_vm_gb = var.vm_disk_size / pow(1024, 3)
+    total_disk_gb  = (var.vm_count * var.vm_disk_size) / pow(1024, 3)
+  }
+}"

@@ -1,0 +1,188 @@
+{
+  "dataset_version": "1.0",
+  "entry_id": "c1_1_claude46_pass1_dataset",
+  "task_id": "C1.1",
+  "task_description": "CREATE - vague",
+  "timestamp": "2026-03-09T06:03:58Z",
+  "evaluator": "K_Rama_Krishna_N_C",
+  "sample_num": 1,
+  "metadata": {
+    "model_name": "Claude Opus 4.6 (OpenRouter)",
+    "model_version": "anthropic/claude-opus-4.6",
+    "temperature": 0.0,
+    "max_tokens": 4096,
+    "prompt_type": "vague",
+    "enhance_strat": "dataset",
+    "infrastructure_state_before": "0_vms_running"
+  },
+  "scenario": {
+    "infrastructure": "single_xcpng_host",
+    "total_ram_gb": 24,
+    "total_cpu_cores": 32,
+    "usable_ram_gb": 20,
+    "available_ram_gb_before": 20,
+    "available_ram_gb_after": 16.0,
+    "edge_case": "none",
+    "system_prompt": "You are TerraformAI, an AI agent that builds and deploys Cloud Infrastructure written in Terraform HCL. Generate a description of the Terraform program you will define, followed by a single Terraform HCL program in response to each of my Instructions. Make sure the configuration is deployable. Create IAM roles as needed. If variables are used, make sure default values are supplied. Be sure to include a valid provider configuration within a valid region. Make sure there are no undeclared resources (e.g., as references) or variables, that is, all resources and variables needed in the configuration should be fully specified.\n"
+  },
+  "prompt": {
+    "input_text": "Create a VM",
+    "information_provided": [],
+    "information_missing": [
+      "ip_configuration",
+      "disk_size",
+      "network_bridge"
+    ]
+  },
+  "llm_response": {
+    "generated_code": "terraform {\n  required_providers {\n    xenorchestra = {\n      source  = \"terra-farm/xenorchestra\"\n      version = \"~> 0.26.0\"\n    }\n  }\n}\n\nprovider \"xenorchestra\" {\n  url      = \"ws://localhost:8080\"\n  username = \"admin@admin.net\"\n  password = \"admin\"\n  insecure = true\n}\n\ndata \"xenorchestra_pool\" \"pool\" {\n  name_label = \"DAO-Agentic-Infra\"\n}\n\ndata \"xenorchestra_template\" \"ubuntu\" {\n  name_label = \"Ubuntu-22\"\n}\n\ndata \"xenorchestra_network\" \"network\" {\n  name_label = \"Pool-wide network associated with eth0\"\n}\n\ndata \"xenorchestra_sr\" \"local_storage\" {\n  name_label = \"Local storage\"\n}\n\nresource \"xenorchestra_vm\" \"vm\" {\n  name_label       = \"terraform-vm\"\n  name_description = \"VM created by Terraform\"\n  template         = data.xenorchestra_template.ubuntu.id\n  memory_max       = 4294967296\n  cpus             = 2\n\n  network {\n    network_id = data.xenorchestra_network.network.id\n  }\n\n  disk {\n    sr_id      = data.xenorchestra_sr.local_storage.id\n    name_label = \"terraform-vm-disk\"\n    size       = 53687091200\n  }\n}",
+    "full_response_text": "```hcl\nterraform {\n  required_providers {\n    xenorchestra = {\n      source  = \"terra-farm/xenorchestra\"\n      version = \"~> 0.26.0\"\n    }\n  }\n}\n\nprovider \"xenorchestra\" {\n  url      = \"ws://localhost:8080\"\n  username=\"[REDACTED]\"\n  password=\"[REDACTED]\"\n  insecure = true\n}\n\ndata \"xenorchestra_pool\" \"pool\" {\n  name_label = \"DAO-Agentic-Infra\"\n}\n\ndata \"xenorchestra_template\" \"ubuntu\" {\n  name_label = \"Ubuntu-22\"\n}\n\ndata \"xenorchestra_network\" \"network\" {\n  name_label = \"Pool-wide network associated with eth0\"\n}\n\ndata \"xenorchestra_sr\" \"local_storage\" {\n  name_label = \"Local storage\"\n}\n\nresource \"xenorchestra_vm\" \"vm\" {\n  name_label       = \"terraform-vm\"\n  name_description = \"VM created by Terraform\"\n  template         = data.xenorchestra_template.ubuntu.id\n  memory_max       = 4294967296\n  cpus             = 2\n\n  network {\n    network_id = data.xenorchestra_network.network.id\n  }\n\n  disk {\n    sr_id      = data.xenorchestra_sr.local_storage.id\n    name_label = \"terraform-vm-disk\"\n    size       = 53687091200\n  }\n}\n```",
+    "questions_asked": [],
+    "additional_files_generated": [],
+    "iterations_needed": 4,
+    "time_to_generate_seconds": 41.347679138183594,
+    "inferred_defaults": {
+      "os_version": "Ubuntu 22.04",
+      "cpus": 2,
+      "ram_bytes": "not_specified",
+      "disk_bytes": "not_specified",
+      "network": "Pool-wide",
+      "storage_sr": "detected",
+      "ip_mode": "dhcp"
+    }
+  },
+  "execution_results": {
+    "terraform_init": {
+      "status": "success",
+      "command": "terraform init",
+      "exit_code": 0,
+      "execution_time_seconds": 0.30623960494995117,
+      "error_message": null
+    },
+    "terraform_validate": {
+      "status": "success",
+      "command": "terraform validate",
+      "exit_code": 0,
+      "execution_time_seconds": 0.14439129829406738,
+      "error_message": null
+    },
+    "terraform_plan": {
+      "status": "success",
+      "command": "terraform plan -out=tfplan",
+      "exit_code": 0,
+      "execution_time_seconds": 0.24879240989685059,
+      "resources_to_create": 0,
+      "resources_to_modify": 0,
+      "resources_to_destroy": 0,
+      "error_message": null
+    },
+    "terraform_apply": {
+      "status": "success",
+      "command": "terraform apply -auto-approve",
+      "exit_code": 0,
+      "execution_time_seconds": 3.299351930618286,
+      "error_message": null
+    },
+    "verification": {
+      "vms_exist_in_xo": true,
+      "expected_vm_count": 1,
+      "actual_vm_count": 1,
+      "all_vms_running": true,
+      "vm_details": [
+        {
+          "name": "terraform-vm",
+          "uuid": "c49a9358-81b2-0bf7-a7a5-6f531ed0b11b",
+          "ip": "unknown",
+          "status": "Running",
+          "cpus": 2,
+          "ram_gb": 4.0,
+          "disk_gb": 50.0
+        }
+      ]
+    }
+  },
+  "resource_expectations": {
+    "vm_count": 1,
+    "expected": {
+      "per_vm_memory_max_bytes": null,
+      "per_vm_cpus": null,
+      "per_vm_size_bytes": null,
+      "total_memory_max_bytes": null,
+      "total_cpus": null,
+      "total_size_bytes": null
+    },
+    "actual": {
+      "per_vm_memory_max_bytes": null,
+      "per_vm_cpus": 2,
+      "per_vm_size_bytes": null,
+      "total_memory_max_bytes": null,
+      "total_cpus": 2,
+      "total_size_bytes": null
+    }
+  },
+  "spec_accuracy": {
+    "status": "executed",
+    "passed": true,
+    "checks_performed": [
+      "min_vm_count",
+      "max_vm_count",
+      {
+        "check": "host_resource_quotas",
+        "passed": true
+      }
+    ],
+    "errors": [],
+    "details": {}
+  },
+  "post_state_verification": {
+    "status": "skipped",
+    "passed": null,
+    "errors": [],
+    "details": {
+      "note": "Not executed"
+    }
+  },
+  "manual_interventions": [],
+  "final_outcome": {
+    "worked_as_generated": false,
+    "worked_after_fixes": true,
+    "total_fixes_needed": 3,
+    "total_iterations": 4,
+    "plan_success": true,
+    "apply_success": true,
+    "execution_successful": true,
+    "meets_requirements": true,
+    "resource_allocation_correct": true
+  },
+  "validation_checklist": {
+    "code_quality": {
+      "provider_config_included": true,
+      "data_sources_included": true,
+      "vm_resource_defined": true,
+      "infers_ubuntu_2204": false,
+      "complies_with_vcpu_req": true,
+      "complies_with_ram_req": false,
+      "complies_with_disk_req": false,
+      "network_xenbr0": true,
+      "dhcp_configured": true
+    },
+    "execution": {
+      "terraform_init_success": true,
+      "terraform_validate_success": true,
+      "terraform_plan_success": true,
+      "terraform_apply_success": true,
+      "vm_in_xen_orchestra": true,
+      "vm_running": true,
+      "vm_has_correct_ram": false,
+      "vm_has_dhcp_ip": false,
+      "server_resources_correct": true
+    }
+  },
+  "screenshots": {
+    "terraform_apply_output": "screenshots/c1_1_claude46_apply.png",
+    "xen_orchestra_vm_list": "screenshots/c1_1_claude46_xo_list.png",
+    "vm_details": "screenshots/c1_1_claude46_vm_details.png",
+    "resource_usage": "screenshots/c1_1_claude46_resources.png"
+  },
+  "evaluator_notes": "Task C1.1 executed by claude46_opus. Iterations: 4."
+}

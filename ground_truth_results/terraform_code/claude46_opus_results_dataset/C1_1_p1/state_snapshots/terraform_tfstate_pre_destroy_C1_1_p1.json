@@ -1,0 +1,170 @@
+{
+  "version": 4,
+  "terraform_version": "1.14.3",
+  "serial": 8,
+  "lineage": "147fe10a-306c-0ad6-b9df-b3605403d9c0",
+  "outputs": {},
+  "resources": [
+    {
+      "mode": "data",
+      "type": "xenorchestra_network",
+      "name": "network",
+      "provider": "provider[\"registry.terraform.io/terra-farm/xenorchestra\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bridge": "xenbr0",
+            "id": "644da301-fe91-ba5f-f6d5-b98b1696e051",
+            "name_label": "Pool-wide network associated with eth0",
+            "pool_id": "d51166df-b3ce-9935-a4d8-f264fcc477a0"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "mode": "data",
+      "type": "xenorchestra_pool",
+      "name": "pool",
+      "provider": "provider[\"registry.terraform.io/terra-farm/xenorchestra\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "cpus": {
+              "cores": "32",
+              "sockets": "1"
+            },
+            "description": "",
+            "id": "d51166df-b3ce-9935-a4d8-f264fcc477a0",
+            "master": "a6a86072-491d-4794-927d-cab3ad0ef376",
+            "name_label": "DAO-Agentic-Infra"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "mode": "data",
+      "type": "xenorchestra_sr",
+      "name": "local_storage",
+      "provider": "provider[\"registry.terraform.io/terra-farm/xenorchestra\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "container": "a6a86072-491d-4794-927d-cab3ad0ef376",
+            "id": "df51fda3-fee4-e466-b70f-b6886d357ea9",
+            "name_label": "Local storage",
+            "physical_usage": 21476950016,
+            "pool_id": "d51166df-b3ce-9935-a4d8-f264fcc477a0",
+            "size": 900096262144,
+            "sr_type": "ext",
+            "tags": null,
+            "usage": 289910292480,
+            "uuid": "df51fda3-fee4-e466-b70f-b6886d357ea9"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "mode": "data",
+      "type": "xenorchestra_template",
+      "name": "ubuntu",
+      "provider": "provider[\"registry.terraform.io/terra-farm/xenorchestra\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "5d95411a-d0f0-e698-f197-62e44beb4313",
+            "name_label": "Ubuntu-22",
+            "pool_id": null,
+            "uuid": "5d95411a-d0f0-e698-f197-62e44beb4313"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "xenorchestra_vm",
+      "name": "vm",
+      "provider": "provider[\"registry.terraform.io/terra-farm/xenorchestra\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "affinity_host": "",
+            "auto_poweron": false,
+            "blocked_operations": null,
+            "cdrom": [],
+            "cloud_config": null,
+            "cloud_network_config": null,
+            "core_os": false,
+            "cpu_cap": 0,
+            "cpu_weight": 0,
+            "cpus": 2,
+            "destroy_cloud_config_vdi_after_boot": false,
+            "disk": [
+              {
+                "attached": true,
+                "name_description": "",
+                "name_label": "terraform-vm-disk",
+                "position": "0",
+                "size": 53687091200,
+                "sr_id": "df51fda3-fee4-e466-b70f-b6886d357ea9",
+                "vbd_id": "0b94abc0-2014-06b4-087b-165fe38f64c3",
+                "vdi_id": "9c66b20c-a354-41d9-be8a-16adad60ccc3"
+              }
+            ],
+            "exp_nested_hvm": false,
+            "high_availability": "",
+            "host": null,
+            "hvm_boot_firmware": "bios",
+            "id": "c49a9358-81b2-0bf7-a7a5-6f531ed0b11b",
+            "installation_method": null,
+            "ipv4_addresses": [],
+            "ipv6_addresses": [],
+            "memory_max": 4294967296,
+            "name_description": "VM created by Terraform",
+            "name_label": "terraform-vm",
+            "network": [
+              {
+                "attached": true,
+                "device": "0",
+                "ipv4_addresses": [],
+                "ipv6_addresses": [],
+                "mac_address": "c6:54:3d:df:ae:c5",
+                "network_id": "644da301-fe91-ba5f-f6d5-b98b1696e051"
+              }
+            ],
+            "power_state": "Running",
+            "resource_set": "",
+            "start_delay": 0,
+            "tags": null,
+            "template": "5d95411a-d0f0-e698-f197-62e44beb4313",
+            "timeouts": null,
+            "vga": "std",
+            "videoram": 8,
+            "wait_for_ip": false
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAsImRlbGV0ZSI6MzAwMDAwMDAwMDAwLCJ1cGRhdGUiOjMwMDAwMDAwMDAwMH0sInNjaGVtYV92ZXJzaW9uIjoiMSJ9",
+          "dependencies": [
+            "data.xenorchestra_network.network",
+            "data.xenorchestra_sr.local_storage",
+            "data.xenorchestra_template.ubuntu"
+          ]
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}

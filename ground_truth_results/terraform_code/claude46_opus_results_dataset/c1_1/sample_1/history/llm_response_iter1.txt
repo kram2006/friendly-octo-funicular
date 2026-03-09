@@ -1,0 +1,116 @@
+
+
+<thinking>
+The user wants me to create a single VM using the terra-farm/xenorchestra provider. Let me plan this out:
+
+1. **Provider Configuration**: terra-farm/xenorchestra v0.26.0, connecting to ws://localhost:8080 with insecure=true, using admin@admin.net / admin credentials.
+
+2. **Data Sources Needed**:
+   - `xenorchestra_pool` - name: "DAO-Agentic-Infra"
+   - `xenorchestra_template` - name_label: "Ubuntu-22"
+   - `xenorchestra_network` - name_label: "Pool-wide network associated with eth0"
+   - `xenorchestra_sr` - name_label: "Local storage"
+
+3. **VM Resource**: `xenorchestra_vm`
+   - The requirement just says "Create a VM" without specific specs. I'll create a reasonable default VM with sensible defaults that fit within the resource constraints (20GB RAM, 30 CPU cores, 500GB disk).
+   - I'll use reasonable defaults: 2 CPUs, 2GB RAM, 20GB disk.
+
+4. **Resource attributes for xenorchestra_vm**:
+   - `template` - from data source
+   - `name_label` - a descriptive name
+   - `cpus` - number of CPUs
+   - `memory_max` - in bytes
+   - `network` block with `network_id`
+   - `disk` block with `sr_id` and `size`
+
+Let me verify the xenorchestra_vm resource attributes:
+- `template` (Required) - template UUID
+- `name_label` (Required) - VM name
+- `cpus` (Required) - number of CPUs
+- `memory_max` (Required) - max memory in bytes
+- `network` block: `network_id` (Required)
+- `disk` block: `sr_id` (Required), `name_label` (Required), `size` (Required, in bytes)
+
+For the data sources, I need to tie the SR, template, and network to the pool. The pool data source gives me the pool ID. For `xenorchestra_sr`, I can filter by `name_label` and `pool_id`. For `xenorchestra_template`, I filter by `name_label` and `pool_id`. For `xenorchestra_network`, I filter by `name_label` and `pool_id`.
+
+Let me set reasonable defaults:
+- CPUs: 2
+- Memory: 2GB = 2 * 1024 * 1024 * 1024 = 2147483648 bytes
+- Disk: 20GB = 20 * 1024 * 1024 * 1024 = 21474836480 bytes
+
+Self-verification:
+- Pool name: "DAO-Agentic-Infra" ✓
+- Template: "Ubuntu-22" ✓
+- Network: "Pool-wide network associated with eth0" ✓
+- SR: "Local storage" ✓
+- Provider: terra-farm/xenorchestra ~> 0.26.0 ✓
+- URL: ws://localhost:8080, insecure: true ✓
+- All IDs resolved via data sources ✓
+</thinking>
+
+<hcl>
+
+```hcl
+terraform {
+  required_providers {
+    xenorchestra = {
+      source  = "terra-farm/xenorchestra"
+      version = "~> 0.26.0"
+    }
+  }
+}
+
+provider "xenorchestra" {
+  url      = "ws://localhost:8080"
+  username="[REDACTED]"
+  password="[REDACTED]"
+  insecure = true
+}
+
+# -----------------------------------------------------------------------------
+# Data Sources – resolve all identifiers by name
+# -----------------------------------------------------------------------------
+
+data "xenorchestra_pool" "pool" {
+  name_label = "DAO-Agentic-Infra"
+}
+
+data "xenorchestra_template" "ubuntu" {
+  name_label = "Ubuntu-22"
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+data "xenorchestra_network" "net" {
+  name_label = "Pool-wide network associated with eth0"
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+data "xenorchestra_sr" "local" {
+  name_label = "Local storage"
+  pool_id    = data.xenorchestra_pool.pool.id
+}
+
+# -----------------------------------------------------------------------------
+# VM Resource
+# -----------------------------------------------------------------------------
+
+resource "xenorchestra_vm" "vm" {
+  name_label       = "vm-01"
+  name_description = "Virtual machine created via Terraform"
+  template         = data.xenorchestra_template.ubuntu.id
+  cpus             = 2
+  memory_max       = 2147483648 # 2 GB
+
+  network {
+    network_id = data.xenorchestra_network.net.id
+  }
+
+  disk {
+    sr_id      = data.xenorchestra_sr.local.id
+    name_label = "vm-01-os-disk"
+    size       = 21474836480 # 20 GB
+  }
+}
+```
+
+</hcl>

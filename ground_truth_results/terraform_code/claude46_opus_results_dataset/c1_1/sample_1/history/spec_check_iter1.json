@@ -1,0 +1,13 @@
+{
+  "status": "executed",
+  "passed": true,
+  "errors": [],
+  "checks_performed": [
+    "min_vm_count",
+    "max_vm_count",
+    {
+      "check": "host_resource_quotas",
+      "passed": true
+    }
+  ]
+}

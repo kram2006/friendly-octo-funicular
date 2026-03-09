@@ -1,0 +1,124 @@
+openrouter:
+  api_key: "${OPENROUTER_API_KEY}"
+  base_url: "https://openrouter.ai/api/v1/chat/completions"
+  timeout: 600
+  max_retries: 3
+
+xenorchestra:
+  url: "ws://localhost:8080"
+  username: "${XO_USERNAME}"
+  password: "${XO_PASSWORD}"
+  total_ram_gb: 24
+  total_cpu_cores: 30
+  usable_ram_gb: 20
+  # ── Platform constants used by prompt templates and spec_checker ────────────
+  pool_name: "DAO-Agentic-Infra"
+  network_name: "Pool-wide network associated with eth0"
+  sr_name: "Local storage"
+  template_name: "Ubuntu-22"
+
+# Evaluation Strategy Parameters
+max_repair_iterations: 9 # 1 Initial + 9 Repairs = 10 Turns Total (Robustness Study Mode)
+
+# =============================================================================
+# RESEARCH-STANDARD SYSTEM PROMPTS (Literal matches to IaC-Eval project)
+# =============================================================================
+baseline_system_prompt: |
+  You are TerraformAI, an AI agent that builds and deploys Cloud Infrastructure written in Terraform HCL. Generate a description of the Terraform program you will define, followed by a single Terraform HCL program in response to each of my Instructions. Make sure the configuration is deployable. Create IAM roles as needed. If variables are used, make sure default values are supplied. Be sure to include a valid provider configuration within a valid region. Make sure there are no undeclared resources (e.g., as references) or variables, that is, all resources and variables needed in the configuration should be fully specified.
+
+multi_turn_system_prompt: |
+  You are TerraformAI, an AI agent that builds and deploys Cloud Infrastructure written in Terraform HCL. Based on the provided feedback and the previously failing HCL code, your task is to provide a single, complete, and error-free Terraform HCL program. Give me the full complete code without errors.
+
+multi_error_system_prompt: |
+  You are TerraformAI, an AI agent that builds and deploys Cloud Infrastructure written in Terraform HCL. Based on the error history provided, your task is to provide a single, complete, and error-free Terraform HCL program. Give me the full complete code without errors. Do not repeat the previous mistakes mentioned in the error list.
+
+dataset_system_prompt: |
+  You are an Expert Infrastructure Architect and Senior Principal Terraform Engineer. Your mission is to produce "Gold Standard" ground-truth Terraform HCL code that is robust, modular, and production-ready.
+
+  RULES:
+  1. THINKING SECTION: You MUST start your response with a thinking section. In this section, analyze the task requirements, identify necessary resources, and verify them against the provided Platform Context.
+  2. PLATFORM FIDELITY: You must strictly adhere to the provided pool_name, sr_name, template_name, and network_name. Use data sources to resolve their IDs.
+  3. ZERO HALLUCINATION: Only use resources and attributes supported by the terra-farm/xenorchestra provider (v0.26.0).
+  4. FULL PROGRAM: Always provide a single, complete, and deployable markdown HCL block (```hcl). No snippets.
+  5. SELF-VERIFICATION: Before ending the thinking section, perform a final check to ensure all attributes (cpus, memory_max, disk size) match the prompt exactly.
+
+  OUTPUT FORMAT:
+  ### Thinking Section
+  Detailed technical plan and constraint verification.
+  ### HCL Code Block
+  The full HCL code block using strictly standard Markdown (```hcl).
+
+# =============================================================================
+# LOCAL PLATFORM CONTEXT (Injected dynamically by eval_core.py)
+# =============================================================================
+platform_context: |
+  ### Infrastructure Instructions:
+  - **Environment**: Single bare-metal host with a fresh XCP-NG installation.
+  - **Usable Resources**: 20GB of RAM, 30 CPU cores, and 500GB of Disk space. All virtual machines must run on this single host.
+  ### Platform Details:
+  The environment is managed through Docker container Xen Orchestra at provider url ws://localhost:8080 (insecure=true), Authentication is performed with the username "admin@admin.net" and password "admin". The infrastructure is organized under a xenorchestra_pool named "DAO-Agentic-Infra". The template (name_label="Ubuntu-22"), xenorchestra_network (name_label="Pool-wide network associated with eth0"), and xenorchestra_sr (name_label="Local storage") to the pool ID. Using the terraform providers "terra-farm/xenorchestra" (version="~> 0.26.0").
+
+# =============================================================================
+# MODEL-SPECIFIC CONFIGURATIONS
+# =============================================================================
+models:
+  phi4_ollama:
+    name: "phi4:14B"
+    display_name: "Phi-4 (Ollama)"
+    folder_name: "Phi4_Ollama_Results"
+    id_prefix: "Phi4_Ol"
+    temperature: 0.2
+    max_tokens: 16384
+    seed: 42
+    base_url: "http://localhost:11434/v1/chat/completions"
+    api_key: "none"
+
+  phi4_openrouter:
+    name: "microsoft/phi-4"
+    display_name: "Phi-4 (OpenRouter)"
+    folder_name: "phi4_or"
+    id_prefix: "phi4or"
+    temperature: 0.2
+    max_tokens: 4096
+    base_url: "https://openrouter.ai/api/v1/chat/completions"
+    api_key: "${OPENROUTER_API_KEY}"
+
+  claude_opus:
+    name: "anthropic/claude-opus-4.5"
+    display_name: "Claude Opus 4.5 (OpenRouter)"
+    folder_name: "claude_opus_results"
+    id_prefix: "claude"
+    temperature: 0.0
+    max_tokens: 4096
+    base_url: "https://openrouter.ai/api/v1/chat/completions"
+    api_key: "${OPENROUTER_API_KEY}"
+
+  gpt5_codex:
+    name: "openai/gpt-5.2-codex"
+    display_name: "GPT-5.2 Codex (OpenRouter)"
+    folder_name: "gpt5_codex_results"
+    id_prefix: "gpt5"
+    temperature: 0.0
+    max_tokens: 4096
+    base_url: "https://openrouter.ai/api/v1/chat/completions"
+    api_key: "${OPENROUTER_API_KEY}"
+
+  gpt53_codex:
+    name: "openai/gpt-5.3-codex"
+    display_name: "GPT-5.3 Codex (OpenRouter)"
+    folder_name: "gpt53_codex_results"
+    id_prefix: "gpt53"
+    temperature: 0.0
+    max_tokens: 4096
+    base_url: "https://openrouter.ai/api/v1/chat/completions"
+    api_key: "${OPENROUTER_API_KEY}"
+
+  claude46_opus:
+    name: "anthropic/claude-opus-4.6"
+    display_name: "Claude Opus 4.6 (OpenRouter)"
+    folder_name: "claude46_opus_results"
+    id_prefix: "claude46"
+    temperature: 0.0
+    max_tokens: 4096
+    base_url: "https://openrouter.ai/api/v1/chat/completions"
+    api_key: "${OPENROUTER_API_KEY}"
