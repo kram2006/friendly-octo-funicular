@@ -10,6 +10,7 @@ import uuid
 import yaml
 import csv
 import asyncio
+import glob
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
@@ -207,7 +208,9 @@ async def main():
     parser.add_argument("--no-confirm", action="store_true", dest="no_confirm", help="Skip manual authorization prompts")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for LLM calls")
     parser.add_argument("--enhance-strat", "-e", dest="enhance_strat", choices=["", "COT", "FSP", "multi-turn", "multi-error", "dataset"], default="", help="Prompt enhancement strategy")
-  
+    parser.add_argument("--compare-with-ground-truth", dest="compare_ground_truth", action="store_true", help="Compare results with ground truth after evaluation completes")
+    parser.add_argument("--ground-truth-dir", dest="ground_truth_dir", default="ground_truth_results", help="Directory containing ground truth results (default: ground_truth_results)")
+
     args = parser.parse_args()
     args.config = _validate_local_path(args.config, "--config")
     args.dataset = _validate_local_path(args.dataset, "--dataset")
@@ -365,6 +368,9 @@ async def main():
                 env=tf_env
             )
             if destroy_res.get('exit_code') != 0:
+                print(f"\n{RED}{BOLD}[TERRAFORM DESTROY FAILED]{RESET}")
+                print(f"{RED}Exit Code: {destroy_res.get('exit_code')}{RESET}")
+                print(f"{RED}Error Output:{RESET}\n{destroy_res.get('stderr', '')}")
                 log_error(f"Cleanup failed for {cleanup_workspace}: {destroy_res.get('stderr', '')}")
                 log_step("Executing Recovery Destroy mechanism...")
                 
@@ -663,6 +669,164 @@ provider "xenorchestra" {
             os.remove(lockfile_path)
 
     print(f"\n{BOLD}{GREEN}Evaluation Complete. All files saved to: {os.path.abspath(args.output_dir)}{RESET}")
+
+    # Optional: Compare with ground truth results
+    if args.compare_ground_truth:
+        print(f"\n{BOLD}{CYAN}>>> Comparing results with ground truth...{RESET}")
+        _compare_with_ground_truth(
+            results_dir=os.path.join(args.output_dir, "dataset", effective_lock_folder),
+            ground_truth_dir=args.ground_truth_dir,
+            task_csv_path=args.dataset
+        )
+
+def _compare_with_ground_truth(results_dir, ground_truth_dir, task_csv_path):
+    """Compare evaluation results with ground truth dataset."""
+    import csv
+    from compute_metrics import bleu_score, codebert_score
+
+    # Load task IDs from CSV
+    task_ids = []
+    with open(task_csv_path, 'r', newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            task_ids.append(row['task_id'])
+
+    print(f"\n{BOLD}{CYAN}{'='*80}{RESET}")
+    print(f"{BOLD}{CYAN}  COMPARISON WITH GROUND TRUTH RESULTS{RESET}")
+    print(f"{BOLD}{CYAN}{'='*80}{RESET}")
+    print(f"  Results dir:      {results_dir}")
+    print(f"  Ground truth dir: {ground_truth_dir}")
+    print(f"{BOLD}{CYAN}{'='*80}{RESET}\n")
+
+    # Find ground truth dataset directory
+    gt_dataset_dirs = []
+    if os.path.exists(os.path.join(ground_truth_dir, "dataset")):
+        gt_base = os.path.join(ground_truth_dir, "dataset")
+        for entry in os.listdir(gt_base):
+            if os.path.isdir(os.path.join(gt_base, entry)):
+                gt_dataset_dirs.append(os.path.join(gt_base, entry))
+
+    if not gt_dataset_dirs:
+        print(f"{YELLOW}WARNING: No ground truth dataset directories found in {ground_truth_dir}/dataset/{RESET}")
+        return
+
+    # Use the first ground truth directory (or could let user choose)
+    gt_dir = gt_dataset_dirs[0]
+    print(f"Using ground truth: {gt_dir}\n")
+
+    comparison_results = []
+
+    for task_id in task_ids:
+        # Find result files for this task
+        result_files = glob.glob(os.path.join(results_dir, f"*{task_id.replace('.', '_')}*.json"))
+        gt_files = glob.glob(os.path.join(gt_dir, f"*{task_id.replace('.', '_')}*.json"))
+
+        if not result_files:
+            continue
+
+        for result_file in result_files:
+            with open(result_file, 'r') as f:
+                result_data = json.load(f)
+
+            # Extract metrics from result
+            result_metrics = {
+                'task_id': task_id,
+                'file': os.path.basename(result_file),
+                'plan_success': result_data.get('execution_results', {}).get('terraform_plan', {}).get('status') == 'success',
+                'apply_success': result_data.get('execution_results', {}).get('terraform_apply', {}).get('status') == 'success',
+                'spec_passed': result_data.get('spec_accuracy', {}).get('passed', False),
+                'iterations': result_data.get('final_outcome', {}).get('total_iterations', 1),
+                'generated_code': result_data.get('llm_response', {}).get('generated_code', '')
+            }
+
+            # Find matching ground truth
+            gt_match = None
+            if gt_files:
+                # Use first ground truth file for this task
+                with open(gt_files[0], 'r') as f:
+                    gt_match = json.load(f)
+
+            if gt_match:
+                gt_metrics = {
+                    'plan_success': gt_match.get('execution_results', {}).get('terraform_plan', {}).get('status') == 'success',
+                    'apply_success': gt_match.get('execution_results', {}).get('terraform_apply', {}).get('status') == 'success',
+                    'spec_passed': gt_match.get('spec_accuracy', {}).get('passed', False),
+                    'iterations': gt_match.get('final_outcome', {}).get('total_iterations', 1),
+                    'gt_code': gt_match.get('llm_response', {}).get('generated_code', '')
+                }
+
+                # Calculate code similarity if both codes exist
+                code_bleu = None
+                code_codebert = None
+                if result_metrics['generated_code'] and gt_metrics['gt_code']:
+                    code_bleu = bleu_score(gt_metrics['gt_code'], result_metrics['generated_code'])
+                    code_codebert = codebert_score(gt_metrics['gt_code'], result_metrics['generated_code'])
+
+                comparison = {
+                    'task_id': task_id,
+                    'result_file': os.path.basename(result_file),
+                    'plan_match': result_metrics['plan_success'] == gt_metrics['plan_success'],
+                    'apply_match': result_metrics['apply_success'] == gt_metrics['apply_success'],
+                    'spec_match': result_metrics['spec_passed'] == gt_metrics['spec_passed'],
+                    'result_plan': result_metrics['plan_success'],
+                    'gt_plan': gt_metrics['plan_success'],
+                    'result_apply': result_metrics['apply_success'],
+                    'gt_apply': gt_metrics['apply_success'],
+                    'result_spec': result_metrics['spec_passed'],
+                    'gt_spec': gt_metrics['spec_passed'],
+                    'result_iters': result_metrics['iterations'],
+                    'gt_iters': gt_metrics['iterations'],
+                    'code_bleu': code_bleu,
+                    'code_codebert_f1': code_codebert['f1'] if code_codebert else None
+                }
+                comparison_results.append(comparison)
+            else:
+                print(f"{YELLOW}No ground truth found for task {task_id}{RESET}")
+
+    if not comparison_results:
+        print(f"{YELLOW}No comparison results generated.{RESET}")
+        return
+
+    # Print comparison table
+    print(f"\n{BOLD}Comparison Summary:{RESET}")
+    print(f"{'Task':<8} {'File':<30} {'Plan':>6} {'Apply':>6} {'Spec':>6} {'BLEU':>8}")
+    print(f"{'-'*8} {'-'*30} {'-'*6} {'-'*6} {'-'*6} {'-'*8}")
+
+    total_plan_match = 0
+    total_apply_match = 0
+    total_spec_match = 0
+    bleu_scores = []
+
+    for comp in comparison_results:
+        plan_sym = GREEN + "✓" + RESET if comp['plan_match'] else RED + "✗" + RESET
+        apply_sym = GREEN + "✓" + RESET if comp['apply_match'] else RED + "✗" + RESET
+        spec_sym = GREEN + "✓" + RESET if comp['spec_match'] else RED + "✗" + RESET
+        bleu_str = f"{comp['code_bleu']:.4f}" if comp['code_bleu'] is not None else "N/A"
+
+        print(f"{comp['task_id']:<8} {comp['result_file']:<30} {plan_sym:>6} {apply_sym:>6} {spec_sym:>6} {bleu_str:>8}")
+
+        if comp['plan_match']:
+            total_plan_match += 1
+        if comp['apply_match']:
+            total_apply_match += 1
+        if comp['spec_match']:
+            total_spec_match += 1
+        if comp['code_bleu'] is not None:
+            bleu_scores.append(comp['code_bleu'])
+
+    print(f"{'-'*8} {'-'*30} {'-'*6} {'-'*6} {'-'*6} {'-'*8}")
+
+    total = len(comparison_results)
+    avg_bleu = sum(bleu_scores) / len(bleu_scores) if bleu_scores else 0
+
+    print(f"\n{BOLD}Overall Agreement:{RESET}")
+    print(f"  Plan Success Match:  {total_plan_match}/{total} ({100*total_plan_match/total:.1f}%)")
+    print(f"  Apply Success Match: {total_apply_match}/{total} ({100*total_apply_match/total:.1f}%)")
+    print(f"  Spec Pass Match:     {total_spec_match}/{total} ({100*total_spec_match/total:.1f}%)")
+    if bleu_scores:
+        print(f"  Avg Code BLEU:       {avg_bleu:.4f}")
+
+    print(f"\n{BOLD}{GREEN}Comparison complete!{RESET}\n")
 
 if __name__ == "__main__":
     asyncio.run(main())

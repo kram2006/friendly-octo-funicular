@@ -301,9 +301,12 @@ async def evaluate_task(task, config, client, output_dir, workspace_override=Non
                     if destroy_res.get('exit_code') == 0:
                         print(f"{GREEN}Workspace cleaned successfully.{RESET}")
                     else:
-                        print(f"{YELLOW}Warning: Destroy returned non-zero. Continuing anyway.{RESET}")
+                        print(f"\n{YELLOW}{BOLD}[WARNING: Terraform Destroy Failed During Retry]{RESET}")
+                        print(f"{YELLOW}Exit Code: {destroy_res.get('exit_code')}{RESET}")
+                        print(f"{YELLOW}Error Output:{RESET}\n{destroy_res.get('stderr', '')}")
+                        print(f"{YELLOW}Continuing anyway...{RESET}")
                 else:
-                    log_step("Chained task retry \u2014 preserving state from previous chain steps (no destroy)")
+                    log_step("Chained task retry — preserving state from previous chain steps (no destroy)")
 
             # Multi-turn repair logic using research-backed semantic pattern (Stateless)
             last_error = error_history[-1] if error_history else "Unknown error"
@@ -414,7 +417,11 @@ async def evaluate_task(task, config, client, output_dir, workspace_override=Non
         init_res = await execute_command("terraform init", cwd=workspace_dir, timeout=180, env=tf_env)
         save_log(os.path.join(task_log_dir, f"init_iter{iteration}.log"), init_res.get('stdout', '') + init_res.get('stderr', ''))
         if init_res['exit_code'] != 0:
-            error_history.append(_sanitize_error(f"Init failed:\n{init_res.get('stderr', '')}"))
+            error_msg = f"Init failed:\n{init_res.get('stderr', '')}"
+            print(f"\n{RED}{BOLD}[TERRAFORM INIT FAILED]{RESET}")
+            print(f"{RED}Exit Code: {init_res['exit_code']}{RESET}")
+            print(f"{RED}Error Output:{RESET}\n{init_res.get('stderr', '')}")
+            error_history.append(_sanitize_error(error_msg))
             error_history = error_history[-MAX_ERROR_HISTORY:]
             continue
 
@@ -422,14 +429,18 @@ async def evaluate_task(task, config, client, output_dir, workspace_override=Non
         val_res = await execute_command("terraform validate", cwd=workspace_dir, timeout=120, env=tf_env)
         save_log(os.path.join(task_log_dir, f"validate_iter{iteration}.log"), val_res.get('stdout', '') + val_res.get('stderr', ''))
         if val_res['exit_code'] != 0:
-            error_history.append(_sanitize_error(f"Validation failed:\n{val_res.get('stderr', '')}"))
+            error_msg = f"Validation failed:\n{val_res.get('stderr', '')}"
+            print(f"\n{RED}{BOLD}[TERRAFORM VALIDATE FAILED]{RESET}")
+            print(f"{RED}Exit Code: {val_res['exit_code']}{RESET}")
+            print(f"{RED}Error Output:{RESET}\n{val_res.get('stderr', '')}")
+            error_history.append(_sanitize_error(error_msg))
             error_history = error_history[-MAX_ERROR_HISTORY:]
             continue
 
         log_step("Running terraform plan")
         plan_res = await execute_command("terraform plan -out=tfplan", cwd=workspace_dir, timeout=300, env=tf_env)
         save_log(os.path.join(task_log_dir, f"plan_iter{iteration}.log"), plan_res.get('stdout', '') + plan_res.get('stderr', ''))
-        
+
         if expected_error == 'resource_exhaustion':
              stderr_lower = plan_res.get('stderr', '').lower()
              if plan_res['exit_code'] != 0 and any(marker in stderr_lower for marker in RESOURCE_EXHAUSTION_MARKERS):
@@ -437,7 +448,11 @@ async def evaluate_task(task, config, client, output_dir, workspace_override=Non
                  execution_results = {'outcome': 'success', 'details': 'Expected failure verified'}
                  break
         if plan_res['exit_code'] != 0:
-            error_history.append(_sanitize_error(f"Plan failed:\n{plan_res.get('stderr', '')}"))
+            error_msg = f"Plan failed:\n{plan_res.get('stderr', '')}"
+            print(f"\n{RED}{BOLD}[TERRAFORM PLAN FAILED]{RESET}")
+            print(f"{RED}Exit Code: {plan_res['exit_code']}{RESET}")
+            print(f"{RED}Error Output:{RESET}\n{plan_res.get('stderr', '')}")
+            error_history.append(_sanitize_error(error_msg))
             error_history = error_history[-MAX_ERROR_HISTORY:]
             continue
 
@@ -469,7 +484,11 @@ async def evaluate_task(task, config, client, output_dir, workspace_override=Non
         apply_res = await execute_terraform_apply(workspace_dir, env=tf_env)
         save_log(os.path.join(task_log_dir, f"apply_iter{iteration}.log"), apply_res.get('stdout', '') + apply_res.get('stderr', ''))
         if apply_res['exit_code'] != 0:
-            error_history.append(_sanitize_error(f"Apply failed:\n{apply_res.get('stderr', '')}"))
+            error_msg = f"Apply failed:\n{apply_res.get('stderr', '')}"
+            print(f"\n{RED}{BOLD}[TERRAFORM APPLY FAILED]{RESET}")
+            print(f"{RED}Exit Code: {apply_res['exit_code']}{RESET}")
+            print(f"{RED}Error Output:{RESET}\n{apply_res.get('stderr', '')}")
+            error_history.append(_sanitize_error(error_msg))
             error_history = error_history[-MAX_ERROR_HISTORY:]
             continue
             
