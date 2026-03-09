@@ -16,8 +16,10 @@ CoT and FSP examples deliberately use tasks NOT in the test set
 
 def _boilerplate():
     """
-    Return the mandatory Terraform boilerplate block with real credentials and the pool data source.
+    Return the mandatory Terraform boilerplate block for prompt examples.
     Common to all XenOrchestra tasks.
+    BUG-C5 FIX: Omit specific credentials from examples to prevent leakage.
+    Note: Actual execution uses credentials from environment variables.
     """
     return """terraform {
   required_providers {
@@ -30,8 +32,8 @@ def _boilerplate():
 
 provider "xenorchestra" {
   url      = "ws://localhost:8080"
-  username = "admin@admin.net"
-  password = "admin"
+  username = var.xo_username
+  password = var.xo_password
   insecure = true
 }
 

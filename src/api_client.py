@@ -19,10 +19,25 @@ class OpenRouterClient:
         # Try HF_TOKEN if base_url is Hugging Face
         if "huggingface.co" in base_url and not api_key:
             self.api_key = os.environ.get("HF_TOKEN") or self.api_key
-            
-        is_local = any(x in base_url for x in ["localhost", "127.0.0.1", "ollama"])
-        if not self.api_key and not is_local:
-            raise ValueError("API Key (OPENROUTER_API_KEY or HF_TOKEN) not found")
+
+        # BUG-C4 FIX: Improved local endpoint detection using regex patterns
+        LOCAL_PATTERNS = [
+            r'localhost',
+            r'127\.0\.0\.\d+',
+            r'192\.168\.\d+\.\d+',
+            r'10\.\d+\.\d+\.\d+',
+            r'172\.(1[6-9]|2[0-9]|3[01])\.\d+\.\d+',  # 172.16.0.0 - 172.31.255.255
+            r'ollama',
+            r'lmstudio'
+        ]
+        is_local = any(re.search(pattern, base_url, re.IGNORECASE) for pattern in LOCAL_PATTERNS)
+
+        # Set API key to placeholder for local endpoints if not provided
+        if not self.api_key:
+            if is_local:
+                self.api_key = "none"  # Placeholder for local endpoints
+            else:
+                raise ValueError("API Key (OPENROUTER_API_KEY or HF_TOKEN) not found for remote endpoint")
         
         if self.api_key and isinstance(self.api_key, str) and PLACEHOLDER_PATTERN.match(self.api_key.strip()):
             if not is_local:

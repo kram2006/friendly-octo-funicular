@@ -10,6 +10,7 @@ import uuid
 import yaml
 import csv
 import asyncio
+import glob
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
@@ -207,7 +208,9 @@ async def main():
     parser.add_argument("--no-confirm", action="store_true", dest="no_confirm", help="Skip manual authorization prompts")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for LLM calls")
     parser.add_argument("--enhance-strat", "-e", dest="enhance_strat", choices=["", "COT", "FSP", "multi-turn", "multi-error", "dataset"], default="", help="Prompt enhancement strategy")
-  
+    parser.add_argument("--compare-with-ground-truth", dest="compare_ground_truth", action="store_true", help="Compare results with ground truth after evaluation completes")
+    parser.add_argument("--ground-truth-dir", dest="ground_truth_dir", default="ground_truth_results", help="Directory containing ground truth results (default: ground_truth_results)")
+
     args = parser.parse_args()
     args.config = _validate_local_path(args.config, "--config")
     args.dataset = _validate_local_path(args.dataset, "--dataset")
@@ -316,14 +319,19 @@ async def main():
 
         tasks = [all_tasks_by_id[tid] for tid in chain_ids]
     elif not args.task_id:
-        # Fixed benchmark mode: tasks ordered for chain-dependency correctness; independent
-        # tasks and chain groups run concurrently within each sample.
+        # BUG-H9 FIX: Updated comment - tasks run sequentially, not concurrently
+        # Fixed benchmark mode: tasks and chain groups run sequentially in dependency order.
+        # Each task/group completes (including VM cleanup) before the next begins.
         tasks = _order_fixed_benchmark_tasks(dataset_tasks)
 
     # Pass@k Loop
     num_passes = args.samples
     pass_start = 0
     if args.pass_num is not None:
+        # BUG-H8 FIX: Validate pass number >= 1
+        if args.pass_num < 1:
+            print(f"{RED}Error: --pass must be >= 1{RESET}")
+            return
         num_passes = 1
         pass_start = args.pass_num - 1
     
@@ -360,6 +368,9 @@ async def main():
                 env=tf_env
             )
             if destroy_res.get('exit_code') != 0:
+                print(f"\n{RED}{BOLD}[TERRAFORM DESTROY FAILED]{RESET}")
+                print(f"{RED}Exit Code: {destroy_res.get('exit_code')}{RESET}")
+                print(f"{RED}Error Output:{RESET}\n{destroy_res.get('stderr', '')}")
                 log_error(f"Cleanup failed for {cleanup_workspace}: {destroy_res.get('stderr', '')}")
                 log_step("Executing Recovery Destroy mechanism...")
                 
@@ -404,9 +415,18 @@ provider "xenorchestra" {
                     if recovery_res.get('exit_code') == 0:
                         log_step(f"Recovery Destroy succeeded for {cleanup_workspace}.")
                     else:
-                        log_error(f"Recovery Destroy also failed for {cleanup_workspace}: {recovery_res.get('stderr', '')}")
+                        error_msg = f"Recovery Destroy also failed for {cleanup_workspace}: {recovery_res.get('stderr', '')}"
+                        log_error(error_msg)
+                        print(f"\n{RED}{BOLD}⚠ CRITICAL: Recovery Destroy Failed!{RESET}")
+                        print(f"{RED}Workspace: {cleanup_workspace}{RESET}")
+                        print(f"{RED}This may leave orphaned VMs on the platform.{RESET}")
+                        print(f"{RED}Manual cleanup may be required.{RESET}")
+                        print(f"{YELLOW}Check XenOrchestra for orphaned resources.{RESET}\n")
                 except Exception as e:
                     log_error(f"Failed to execute Recovery Destroy: {e}")
+                    print(f"\n{RED}{BOLD}⚠ CRITICAL: Exception during Recovery Destroy!{RESET}")
+                    print(f"{RED}Error: {e}{RESET}")
+                    print(f"{RED}Manual cleanup may be required.{RESET}\n")
 
         if args.chain:
             # Chained mode: each task runs in its own workspace directory.
@@ -644,20 +664,249 @@ provider "xenorchestra" {
         )
         return
 
+    # Check available disk space for long runs
+    if num_passes >= 10:
+        import shutil
+        try:
+            stat = shutil.disk_usage(args.output_dir)
+            free_gb = stat.free / (1024**3)
+            # Estimate: ~100MB per task × 10 tasks × num_passes
+            estimated_gb_needed = (0.1 * 10 * num_passes)
+
+            print(f"\n{BOLD}Disk Space Check:{RESET}")
+            print(f"  Available: {free_gb:.1f} GB")
+            print(f"  Estimated needed: {estimated_gb_needed:.1f} GB")
+
+            if free_gb < estimated_gb_needed:
+                print(f"{RED}⚠ WARNING: Low disk space! Available ({free_gb:.1f} GB) may be insufficient.{RESET}")
+                print(f"{YELLOW}Consider cleaning up old results or using fewer samples.{RESET}")
+            elif free_gb < estimated_gb_needed * 2:
+                print(f"{YELLOW}⚠ Disk space is tight. Monitor usage during evaluation.{RESET}")
+            else:
+                print(f"{GREEN}✓ Sufficient disk space available{RESET}")
+        except Exception as e:
+            log_step(f"Could not check disk space: {e}")
+
     try:
         with open(lockfile_path, "w", encoding="utf-8") as lock_file:
             lock_file.write(f"model={model_name}\n")
 
         print(f"\n{BOLD}{CYAN}>>> Running {num_passes} sample(s) sequentially...{RESET}")
+
+        # Estimate total runtime for user awareness
+        if num_passes > 1:
+            estimated_minutes_per_sample = 10  # Conservative estimate per task
+            total_tasks = len(tasks)
+            estimated_total_minutes = num_passes * total_tasks * estimated_minutes_per_sample
+            print(f"{CYAN}Estimated total runtime: ~{estimated_total_minutes} minutes ({estimated_total_minutes/60:.1f} hours){RESET}")
+            print(f"{CYAN}Processing {num_passes} samples × {total_tasks} tasks = {num_passes * total_tasks} evaluations{RESET}")
+            if num_passes >= 50:
+                print(f"{YELLOW}⚠ Long-running evaluation detected. Consider using --pass to split into smaller batches.{RESET}")
+
+        import time
+        overall_start_time = time.time()
+
         for p in range(pass_start, pass_start + num_passes):
-            log_step(f"Starting sample {p - pass_start + 1}/{num_passes}")
+            sample_start_time = time.time()
+            current_sample = p - pass_start + 1
+            log_step(f"Starting sample {current_sample}/{num_passes}")
+            print(f"{BOLD}{CYAN}{'='*80}{RESET}")
+            print(f"{BOLD}{CYAN}  SAMPLE {current_sample}/{num_passes} (Pass Index: {p}){RESET}")
+            print(f"{BOLD}{CYAN}{'='*80}{RESET}")
+
             await run_sample(p)
+
+            sample_elapsed = time.time() - sample_start_time
+            overall_elapsed = time.time() - overall_start_time
+            samples_completed = current_sample
+            samples_remaining = num_passes - samples_completed
+
+            if samples_completed > 0:
+                avg_time_per_sample = overall_elapsed / samples_completed
+                eta_seconds = avg_time_per_sample * samples_remaining
+                eta_minutes = eta_seconds / 60
+
+                print(f"\n{GREEN}✓ Sample {current_sample}/{num_passes} completed in {sample_elapsed/60:.1f} minutes{RESET}")
+                print(f"{CYAN}Progress: {current_sample}/{num_passes} ({100*current_sample/num_passes:.1f}%){RESET}")
+                if samples_remaining > 0:
+                    print(f"{CYAN}Estimated time remaining: ~{eta_minutes:.1f} minutes ({eta_minutes/60:.1f} hours){RESET}")
+                print(f"{CYAN}Average time per sample: {avg_time_per_sample/60:.1f} minutes{RESET}")
+            print()
     finally:
         unload_ollama_model(model_config)
         if os.path.exists(lockfile_path):
             os.remove(lockfile_path)
 
+    # Print final summary for multi-sample runs
+    if num_passes > 1:
+        total_elapsed = time.time() - overall_start_time
+        print(f"\n{BOLD}{GREEN}{'='*80}{RESET}")
+        print(f"{BOLD}{GREEN}  EVALUATION COMPLETE{RESET}")
+        print(f"{BOLD}{GREEN}{'='*80}{RESET}")
+        print(f"{GREEN}Total samples completed: {num_passes}{RESET}")
+        print(f"{GREEN}Total time elapsed: {total_elapsed/60:.1f} minutes ({total_elapsed/3600:.2f} hours){RESET}")
+        print(f"{GREEN}Average time per sample: {total_elapsed/num_passes/60:.1f} minutes{RESET}")
+        print(f"{BOLD}{GREEN}{'='*80}{RESET}\n")
+
     print(f"\n{BOLD}{GREEN}Evaluation Complete. All files saved to: {os.path.abspath(args.output_dir)}{RESET}")
+
+    # Optional: Compare with ground truth results
+    if args.compare_ground_truth:
+        print(f"\n{BOLD}{CYAN}>>> Comparing results with ground truth...{RESET}")
+        _compare_with_ground_truth(
+            results_dir=os.path.join(args.output_dir, "dataset", effective_lock_folder),
+            ground_truth_dir=args.ground_truth_dir,
+            task_csv_path=args.dataset
+        )
+
+def _compare_with_ground_truth(results_dir, ground_truth_dir, task_csv_path):
+    """Compare evaluation results with ground truth dataset."""
+    import csv
+    from compute_metrics import bleu_score, codebert_score
+
+    # Load task IDs from CSV
+    task_ids = []
+    with open(task_csv_path, 'r', newline='') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            task_ids.append(row['task_id'])
+
+    print(f"\n{BOLD}{CYAN}{'='*80}{RESET}")
+    print(f"{BOLD}{CYAN}  COMPARISON WITH GROUND TRUTH RESULTS{RESET}")
+    print(f"{BOLD}{CYAN}{'='*80}{RESET}")
+    print(f"  Results dir:      {results_dir}")
+    print(f"  Ground truth dir: {ground_truth_dir}")
+    print(f"{BOLD}{CYAN}{'='*80}{RESET}\n")
+
+    # Find ground truth dataset directory
+    gt_dataset_dirs = []
+    if os.path.exists(os.path.join(ground_truth_dir, "dataset")):
+        gt_base = os.path.join(ground_truth_dir, "dataset")
+        for entry in os.listdir(gt_base):
+            if os.path.isdir(os.path.join(gt_base, entry)):
+                gt_dataset_dirs.append(os.path.join(gt_base, entry))
+
+    if not gt_dataset_dirs:
+        print(f"{YELLOW}WARNING: No ground truth dataset directories found in {ground_truth_dir}/dataset/{RESET}")
+        return
+
+    # Use the first ground truth directory (or could let user choose)
+    gt_dir = gt_dataset_dirs[0]
+    print(f"Using ground truth: {gt_dir}\n")
+
+    comparison_results = []
+
+    for task_id in task_ids:
+        # Find result files for this task
+        result_files = glob.glob(os.path.join(results_dir, f"*{task_id.replace('.', '_')}*.json"))
+        gt_files = glob.glob(os.path.join(gt_dir, f"*{task_id.replace('.', '_')}*.json"))
+
+        if not result_files:
+            continue
+
+        for result_file in result_files:
+            with open(result_file, 'r') as f:
+                result_data = json.load(f)
+
+            # Extract metrics from result
+            result_metrics = {
+                'task_id': task_id,
+                'file': os.path.basename(result_file),
+                'plan_success': result_data.get('execution_results', {}).get('terraform_plan', {}).get('status') == 'success',
+                'apply_success': result_data.get('execution_results', {}).get('terraform_apply', {}).get('status') == 'success',
+                'spec_passed': result_data.get('spec_accuracy', {}).get('passed', False),
+                'iterations': result_data.get('final_outcome', {}).get('total_iterations', 1),
+                'generated_code': result_data.get('llm_response', {}).get('generated_code', '')
+            }
+
+            # Find matching ground truth
+            gt_match = None
+            if gt_files:
+                # Use first ground truth file for this task
+                with open(gt_files[0], 'r') as f:
+                    gt_match = json.load(f)
+
+            if gt_match:
+                gt_metrics = {
+                    'plan_success': gt_match.get('execution_results', {}).get('terraform_plan', {}).get('status') == 'success',
+                    'apply_success': gt_match.get('execution_results', {}).get('terraform_apply', {}).get('status') == 'success',
+                    'spec_passed': gt_match.get('spec_accuracy', {}).get('passed', False),
+                    'iterations': gt_match.get('final_outcome', {}).get('total_iterations', 1),
+                    'gt_code': gt_match.get('llm_response', {}).get('generated_code', '')
+                }
+
+                # Calculate code similarity if both codes exist
+                code_bleu = None
+                code_codebert = None
+                if result_metrics['generated_code'] and gt_metrics['gt_code']:
+                    code_bleu = bleu_score(gt_metrics['gt_code'], result_metrics['generated_code'])
+                    code_codebert = codebert_score(gt_metrics['gt_code'], result_metrics['generated_code'])
+
+                comparison = {
+                    'task_id': task_id,
+                    'result_file': os.path.basename(result_file),
+                    'plan_match': result_metrics['plan_success'] == gt_metrics['plan_success'],
+                    'apply_match': result_metrics['apply_success'] == gt_metrics['apply_success'],
+                    'spec_match': result_metrics['spec_passed'] == gt_metrics['spec_passed'],
+                    'result_plan': result_metrics['plan_success'],
+                    'gt_plan': gt_metrics['plan_success'],
+                    'result_apply': result_metrics['apply_success'],
+                    'gt_apply': gt_metrics['apply_success'],
+                    'result_spec': result_metrics['spec_passed'],
+                    'gt_spec': gt_metrics['spec_passed'],
+                    'result_iters': result_metrics['iterations'],
+                    'gt_iters': gt_metrics['iterations'],
+                    'code_bleu': code_bleu,
+                    'code_codebert_f1': code_codebert['f1'] if code_codebert else None
+                }
+                comparison_results.append(comparison)
+            else:
+                print(f"{YELLOW}No ground truth found for task {task_id}{RESET}")
+
+    if not comparison_results:
+        print(f"{YELLOW}No comparison results generated.{RESET}")
+        return
+
+    # Print comparison table
+    print(f"\n{BOLD}Comparison Summary:{RESET}")
+    print(f"{'Task':<8} {'File':<30} {'Plan':>6} {'Apply':>6} {'Spec':>6} {'BLEU':>8}")
+    print(f"{'-'*8} {'-'*30} {'-'*6} {'-'*6} {'-'*6} {'-'*8}")
+
+    total_plan_match = 0
+    total_apply_match = 0
+    total_spec_match = 0
+    bleu_scores = []
+
+    for comp in comparison_results:
+        plan_sym = GREEN + "✓" + RESET if comp['plan_match'] else RED + "✗" + RESET
+        apply_sym = GREEN + "✓" + RESET if comp['apply_match'] else RED + "✗" + RESET
+        spec_sym = GREEN + "✓" + RESET if comp['spec_match'] else RED + "✗" + RESET
+        bleu_str = f"{comp['code_bleu']:.4f}" if comp['code_bleu'] is not None else "N/A"
+
+        print(f"{comp['task_id']:<8} {comp['result_file']:<30} {plan_sym:>6} {apply_sym:>6} {spec_sym:>6} {bleu_str:>8}")
+
+        if comp['plan_match']:
+            total_plan_match += 1
+        if comp['apply_match']:
+            total_apply_match += 1
+        if comp['spec_match']:
+            total_spec_match += 1
+        if comp['code_bleu'] is not None:
+            bleu_scores.append(comp['code_bleu'])
+
+    print(f"{'-'*8} {'-'*30} {'-'*6} {'-'*6} {'-'*6} {'-'*8}")
+
+    total = len(comparison_results)
+    avg_bleu = sum(bleu_scores) / len(bleu_scores) if bleu_scores else 0
+
+    print(f"\n{BOLD}Overall Agreement:{RESET}")
+    print(f"  Plan Success Match:  {total_plan_match}/{total} ({100*total_plan_match/total:.1f}%)")
+    print(f"  Apply Success Match: {total_apply_match}/{total} ({100*total_apply_match/total:.1f}%)")
+    print(f"  Spec Pass Match:     {total_spec_match}/{total} ({100*total_spec_match/total:.1f}%)")
+    if bleu_scores:
+        print(f"  Avg Code BLEU:       {avg_bleu:.4f}")
+
+    print(f"\n{BOLD}{GREEN}Comparison complete!{RESET}\n")
 
 if __name__ == "__main__":
     asyncio.run(main())

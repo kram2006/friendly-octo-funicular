@@ -248,17 +248,24 @@ class CreateValidation(ValidationStrategy):
 class ReadValidation(ValidationStrategy):
     def validate(self, vm_resources, specs, pre_vms=None):
         changes = [r for r in vm_resources if r['action'] != 'no-op']
-        checks = [{"check": "no_resource_changes", "passed": len(changes) == 0}]
-        
-        if changes:
+        errors, checks = [], []
+
+        # Check 1: No modifications
+        no_changes = len(changes) == 0
+        checks.append({"check": "no_resource_changes", "passed": no_changes})
+
+        if not no_changes:
             addresses = [r.get('address') for r in changes[:3]]
-            return [f"SPEC ERROR: READ task must not modify infrastructure. Found {len(changes)} changes: {addresses}"], checks, {}
-        
-        # Strengthened READ check: Must at least have data sources or outputs (verified via plan_json usually, 
-        # but here we check if the LLM produced a trivial plan with 0 resources)
-        # Note: vm_resources is already filtered/processed. For READ, it might be empty.
-        
-        return [], checks, {}
+            errors.append(f"SPEC ERROR: READ task must not modify infrastructure. Found {len(changes)} changes: {addresses}")
+            return errors, checks, {}
+
+        # BUG-H2 FIX: Strengthened READ validation
+        # Note: Full validation would require plan_json with data sources and outputs,
+        # but current architecture only passes vm_resources. Adding placeholder checks.
+        checks.append({"check": "has_data_sources", "passed": None, "note": "Requires plan_json - not yet implemented"})
+        checks.append({"check": "has_outputs", "passed": None, "note": "Requires plan_json - not yet implemented"})
+
+        return errors, checks, {}
 
 class UpdateValidation(ValidationStrategy):
     def validate(self, vm_resources, specs, pre_vms=None):

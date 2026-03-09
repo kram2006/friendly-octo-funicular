@@ -2,6 +2,9 @@ import json
 import uuid
 import os
 import re
+import sys
+import subprocess
+import hashlib
 from datetime import datetime
 from eval_utils import redact_sensitive_text
 
@@ -11,6 +14,27 @@ import ast
 import operator as _op
 
 RAM_MARGIN_PERCENT = 0.05
+
+def _get_terraform_version():
+    """Get terraform version for reproducibility."""
+    try:
+        result = subprocess.run(['terraform', 'version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            # Extract first line like "Terraform v1.5.7"
+            return result.stdout.split('\n')[0].strip()
+    except Exception:
+        pass
+    return "unknown"
+
+def _get_git_commit():
+    """Get current git commit SHA for reproducibility."""
+    try:
+        result = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True, timeout=5, cwd=os.path.dirname(__file__))
+        if result.returncode == 0:
+            return result.stdout.strip()[:12]  # Short SHA
+    except Exception:
+        pass
+    return "unknown"
 
 def _safe_eval_arith(expr):
     """Safely evaluate simple arithmetic like '4 * 1024 * 1024 * 1024'."""
@@ -199,7 +223,14 @@ def generate_dataset_entry(task_data, terraform_code, execution_results, verific
             "seed": model_config.get('seed'),
             "prompt_type": task_data.get('prompt_type', 'unknown'),
             "enhance_strat": enhance_strat,
-            "infrastructure_state_before": f"{pre_verification_data.get('actual_vm_count', 0)}_vms_running"
+            "infrastructure_state_before": f"{pre_verification_data.get('actual_vm_count', 0)}_vms_running",
+            # BUG-H1 FIX: Add reproducibility metadata
+            "base_url": model_config.get('base_url', 'unknown'),
+            "python_version": sys.version.split()[0],
+            "terraform_version": _get_terraform_version(),
+            "git_commit": _get_git_commit(),
+            "config_hash": hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:16],
+            "timestamp_utc": now.isoformat()
         },
         
         "scenario": {
